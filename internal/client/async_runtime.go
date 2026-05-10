@@ -21,6 +21,7 @@ import (
 	DnsParser "masterdnsvpn-go/internal/dnsparser"
 	Enums "masterdnsvpn-go/internal/enums"
 	fragmentStore "masterdnsvpn-go/internal/fragmentstore"
+	VpnProto "masterdnsvpn-go/internal/vpnproto"
 )
 
 const clientRXDropLogInterval = 2 * time.Second
@@ -879,7 +880,7 @@ func (c *Client) handleInboundPacket(data []byte, addr *net.UDPAddr, localAddr s
 	// c.log.Debugf("Inbound packet from %v (%d bytes)", addr, len(data))
 
 	// 1. Extract VPN Packet from DNS Response
-	vpnPacket, err := DnsParser.ExtractVPNResponse(data, c.responseMode == mtuProbeBase64Reply)
+	vpnPacket, err := DnsParser.ExtractEncryptedVPNResponse(data, c.codec, c.responseMode == mtuProbeBase64Reply)
 	if err != nil {
 		if errors.Is(err, DnsParser.ErrTXTAnswerMissing) {
 			receivedAt := time.Now()
@@ -907,13 +908,19 @@ func (c *Client) handleInboundPacket(data []byte, addr *net.UDPAddr, localAddr s
 		return
 	}
 
-	c.balancer.TrackResolverSuccess(
+	if !c.validateInboundSessionPacket(vpnPacket) {
+		return
+	}
+
+	if !c.balancer.TrackResolverSuccess(
 		data,
 		addr,
 		localAddr,
 		time.Now(),
 		0,
-	)
+	) {
+		return
+	}
 	// if c.log != nil && c.log.Enabled(logger.LevelDebug) && vpnPacket.PacketType != Enums.PACKET_PONG {
 	// 	if vpnPacket.PacketType == Enums.PACKET_STREAM_DATA_ACK {
 	// 		c.log.Debugf("Client received ACK | Stream: %d | Seq: %d", vpnPacket.StreamID, vpnPacket.SequenceNum)
@@ -936,4 +943,24 @@ func (c *Client) handleInboundPacket(data []byte, addr *net.UDPAddr, localAddr s
 		c.log.Debugf("\U0001F6A8 <red>Handler execution failed: %v</red>", err)
 	}
 
+}
+
+func (c *Client) validateInboundSessionPacket(packet VpnProto.Packet) bool {
+	if c == nil {
+		return false
+	}
+
+	switch packet.PacketType {
+	case Enums.PACKET_SESSION_ACCEPT,
+		Enums.PACKET_SESSION_BUSY,
+		Enums.PACKET_MTU_UP_RES,
+		Enums.PACKET_MTU_DOWN_RES:
+		return true
+	}
+
+	if !c.sessionReady || c.sessionID == 0 {
+		return false
+	}
+
+	return packet.SessionID == c.sessionID && packet.SessionCookie == c.sessionCookie
 }

@@ -188,7 +188,7 @@ func main() {
 		)
 	}
 
-	log.Infof("\U0001F511 <green>Active Encryption Key: <yellow>%s</yellow></green>", keyInfo.Key)
+	log.Infof("\U0001F511 <green>Active Encryption Key: <yellow>loaded (redacted)</yellow></green>")
 	log.Debugf("\u25B6\uFE0F <green>Starting UDP Server...</green>")
 
 	if err := srv.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

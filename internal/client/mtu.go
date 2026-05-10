@@ -454,11 +454,15 @@ func (c *Client) recheckResolverDownloadMTU(ctx context.Context, conn Connection
 }
 
 func (c *Client) resolverHealthProbeTimeout() time.Duration {
+	if c == nil {
+		return 4 * time.Second
+	}
+
 	timeout := c.mtuTestTimeout
 	if timeout <= 0 {
 		timeout = 4 * time.Second
 	}
-	if c == nil || c.balancer == nil {
+	if c.balancer == nil {
 		return timeout
 	}
 
@@ -931,7 +935,7 @@ func (c *Client) sendUploadMTUProbe(ctx context.Context, conn Connection, probeT
 	}
 	rtt := time.Since(startedAt)
 
-	packet, err := DnsParser.ExtractVPNResponse(response, useBase64)
+	packet, err := DnsParser.ExtractEncryptedVPNResponse(response, c.codec, useBase64)
 	if err != nil {
 		c.logMTUProbe(
 			options.IsRetry,
@@ -1050,7 +1054,7 @@ func (c *Client) sendDownloadMTUProbe(ctx context.Context, conn Connection, prob
 
 	rtt := time.Since(startedAt)
 
-	packet, err := DnsParser.ExtractVPNResponse(response, useBase64)
+	packet, err := DnsParser.ExtractEncryptedVPNResponse(response, c.codec, useBase64)
 	if err != nil {
 		c.logMTUProbe(
 			options.IsRetry,

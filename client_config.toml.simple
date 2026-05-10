@@ -19,15 +19,13 @@
 DOMAINS = ["v.domain.com"]
 
 # Encryption method for tunnel payloads.
-# Allowed values:
-# 0 = None
-# 1 = XOR
-# 2 = ChaCha20
+# Allowed values in the hardened profile:
 # 3 = AES-128-GCM
 # 4 = AES-192-GCM
 # 5 = AES-256-GCM
+# Unauthenticated legacy modes (0=None, 1=XOR, 2=ChaCha20) are rejected.
 # Must match server DATA_ENCRYPTION_METHOD.
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 
 # Shared encryption key.
 # Required on the client.

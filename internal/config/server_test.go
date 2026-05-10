@@ -23,7 +23,7 @@ func TestLoadServerConfigWithOverridesAppliesFlagPrecedence(t *testing.T) {
 PROTOCOL_TYPE = "SOCKS5"
 UDP_PORT = 53
 DOMAIN = ["config.example.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 SUPPORTED_UPLOAD_COMPRESSION_TYPES = [0, 3]
 SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
 `), 0o644); err != nil {
@@ -34,7 +34,7 @@ SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
 		Values: map[string]any{
 			"UDPPort":                           5300,
 			"Domain":                            []string{"flag.example.com", "alt.example.com"},
-			"DataEncryptionMethod":              2,
+			"DataEncryptionMethod":              4,
 			"SupportedUploadCompressionTypes":   []int{0, 1},
 			"SupportedDownloadCompressionTypes": []int{0, 1, 3},
 		},
@@ -49,8 +49,8 @@ SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
 	if len(cfg.Domain) != 2 || cfg.Domain[0] != "flag.example.com" || cfg.Domain[1] != "alt.example.com" {
 		t.Fatalf("unexpected domain override: %+v", cfg.Domain)
 	}
-	if cfg.DataEncryptionMethod != 2 {
-		t.Fatalf("unexpected data encryption override: got=%d want=%d", cfg.DataEncryptionMethod, 2)
+	if cfg.DataEncryptionMethod != 4 {
+		t.Fatalf("unexpected data encryption override: got=%d want=%d", cfg.DataEncryptionMethod, 4)
 	}
 	if len(cfg.SupportedUploadCompressionTypes) != 2 || cfg.SupportedUploadCompressionTypes[0] != 0 || cfg.SupportedUploadCompressionTypes[1] != 1 {
 		t.Fatalf("unexpected upload compression override: %+v", cfg.SupportedUploadCompressionTypes)
@@ -72,7 +72,7 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 		"-domain=a.example.com,b.example.com",
 		"-use-external-socks5",
 		"-supported-upload-compression-types=0,1",
-		"-data-encryption-method=2",
+		"-data-encryption-method=4",
 	}); err != nil {
 		t.Fatalf("flag parse failed: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	if got, ok := overrides.Values["UseExternalSOCKS5"].(bool); !ok || !got {
 		t.Fatalf("unexpected socks5 override: %#v", overrides.Values["UseExternalSOCKS5"])
 	}
-	if got, ok := overrides.Values["DataEncryptionMethod"].(int); !ok || got != 2 {
+	if got, ok := overrides.Values["DataEncryptionMethod"].(int); !ok || got != 4 {
 		t.Fatalf("unexpected encryption method override: %#v", overrides.Values["DataEncryptionMethod"])
 	}
 	gotDomains, ok := overrides.Values["Domain"].([]string)
@@ -97,6 +97,26 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	}
 	if _, exists := overrides.Values["UDPHost"]; exists {
 		t.Fatalf("did not expect unset flag to appear in overrides: %#v", overrides.Values["UDPHost"])
+	}
+}
+
+func TestLoadServerConfigRejectsUnauthenticatedEncryptionMethod(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "server_config.toml")
+
+	if err := os.WriteFile(configPath, []byte(`
+PROTOCOL_TYPE = "SOCKS5"
+UDP_PORT = 53
+DOMAIN = ["config.example.com"]
+DATA_ENCRYPTION_METHOD = 2
+SUPPORTED_UPLOAD_COMPRESSION_TYPES = [0, 3]
+SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile config failed: %v", err)
+	}
+
+	if _, err := LoadServerConfig(configPath); err == nil {
+		t.Fatal("LoadServerConfig should reject unauthenticated DATA_ENCRYPTION_METHOD values")
 	}
 }
 
@@ -152,7 +172,7 @@ func TestServerConfigClientPolicyLimitsAreSafelyClamped(t *testing.T) {
 PROTOCOL_TYPE = "SOCKS5"
 UDP_PORT = 53
 DOMAIN = ["config.example.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 SUPPORTED_UPLOAD_COMPRESSION_TYPES = [0, 3]
 SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
 MAX_ALLOWED_CLIENT_PACKET_DUPLICATION_COUNT = 999
@@ -228,7 +248,7 @@ func TestLoadServerConfigFallsBackToJSONWhenTOMLIsMissing(t *testing.T) {
   "PROTOCOL_TYPE": "SOCKS5",
   "UDP_PORT": 5300,
   "DOMAIN": ["json.example.com"],
-  "DATA_ENCRYPTION_METHOD": 1,
+  "DATA_ENCRYPTION_METHOD": 5,
   "SUPPORTED_UPLOAD_COMPRESSION_TYPES": [0, 3],
   "SUPPORTED_DOWNLOAD_COMPRESSION_TYPES": [0, 3]
 }`), 0o644); err != nil {
@@ -253,7 +273,7 @@ func TestLoadServerConfigFromJSONBase64AppliesDefaults(t *testing.T) {
   "PROTOCOL_TYPE": "SOCKS5",
   "UDP_PORT": 5301,
   "DOMAIN": ["base64.example.com"],
-  "DATA_ENCRYPTION_METHOD": 1,
+  "DATA_ENCRYPTION_METHOD": 5,
   "SUPPORTED_UPLOAD_COMPRESSION_TYPES": [0, 3],
   "SUPPORTED_DOWNLOAD_COMPRESSION_TYPES": [0, 3]
 }`
@@ -279,7 +299,7 @@ func TestLoadServerConfigFromJSONBase64WithOverridesAppliesBeforeFinalize(t *tes
 	rawJSON := `{
   "PROTOCOL_TYPE": "SOCKS5",
   "UDP_PORT": 5301,
-  "DATA_ENCRYPTION_METHOD": 1,
+  "DATA_ENCRYPTION_METHOD": 5,
   "SUPPORTED_UPLOAD_COMPRESSION_TYPES": [0, 3],
   "SUPPORTED_DOWNLOAD_COMPRESSION_TYPES": [0, 3]
 }`

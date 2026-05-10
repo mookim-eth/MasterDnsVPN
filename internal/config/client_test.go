@@ -28,7 +28,7 @@ PROTOCOL_TYPE = "socks5"
 DOMAINS = ["V.Domain.com", "v.domain.com."]
 RESOLVER_BALANCING_STRATEGY = 2
 BASE_ENCODE_DATA = true
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 MIN_UPLOAD_MTU = 70
 MIN_DOWNLOAD_MTU = 150
@@ -85,7 +85,7 @@ func TestLoadClientConfigRejectsInvalidProtocol(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "udp"
 DOMAINS = ["v.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile config failed: %v", err)
@@ -109,7 +109,7 @@ func TestLoadClientConfigRejectsInvalidResolverBalancingStrategy(t *testing.T) {
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["v.domain.com"]
 RESOLVER_BALANCING_STRATEGY = 9
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile config failed: %v", err)
@@ -120,6 +120,29 @@ ENCRYPTION_KEY = "secret"
 
 	if _, err := LoadClientConfig(configPath); err == nil {
 		t.Fatal("LoadClientConfig should reject an invalid RESOLVER_BALANCING_STRATEGY")
+	}
+}
+
+func TestLoadClientConfigRejectsUnauthenticatedEncryptionMethod(t *testing.T) {
+	dir := t.TempDir()
+
+	configPath := filepath.Join(dir, "client_config.toml")
+	resolversPath := filepath.Join(dir, "client_resolvers.txt")
+
+	if err := os.WriteFile(configPath, []byte(`
+PROTOCOL_TYPE = "SOCKS5"
+DOMAINS = ["v.domain.com"]
+DATA_ENCRYPTION_METHOD = 1
+ENCRYPTION_KEY = "secret"
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile config failed: %v", err)
+	}
+	if err := os.WriteFile(resolversPath, []byte("8.8.8.8\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile resolvers failed: %v", err)
+	}
+
+	if _, err := LoadClientConfig(configPath); err == nil {
+		t.Fatal("LoadClientConfig should reject unauthenticated DATA_ENCRYPTION_METHOD values")
 	}
 }
 
@@ -142,7 +165,7 @@ COMPRESSION_MIN_SIZE = 0
 MTU_TEST_RETRIES = 0
 MTU_TEST_TIMEOUT = 0
 MTU_TEST_PARALLELISM = 0
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile config failed: %v", err)
@@ -197,7 +220,7 @@ DOMAINS = ["v.domain.com"]
 SOCKS5_AUTH = true
 SOCKS5_USER = "user_only"
 SOCKS5_PASS = ""
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile config failed: %v", err)
@@ -225,7 +248,7 @@ func TestLoadClientConfigAllowsShortAutoDisableWindowForQuickTesting(t *testing.
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["v.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 AUTO_DISABLE_TIMEOUT_SERVERS = true
 AUTO_DISABLE_TIMEOUT_WINDOW_SECONDS = 3.0
@@ -255,7 +278,7 @@ func TestLoadClientConfigUsesMergedRX_TX_Workers(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["v.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 RX_TX_WORKERS = 9
 TUNNEL_PROCESS_WORKERS = 2
@@ -288,7 +311,7 @@ func TestLoadClientConfigFallsBackToLegacyReaderWriterWorkers(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["v.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 TUNNEL_READER_WORKERS = 3
 TUNNEL_WRITER_WORKERS = 9
@@ -322,7 +345,7 @@ func TestLoadClientConfigAutoDerivesTunnelProcessWorkersAboveRXTX(t *testing.T) 
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["v.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 RX_TX_WORKERS = 6
 `), 0o644); err != nil {
@@ -352,7 +375,7 @@ func TestLoadClientConfigWithOverridesReplacesResolversDomainsAndMTURange(t *tes
 	if err := os.WriteFile(configPath, []byte(`
 PROTOCOL_TYPE = "SOCKS5"
 DOMAINS = ["config.domain.com"]
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 ENCRYPTION_KEY = "secret"
 MIN_UPLOAD_MTU = 40
 MAX_UPLOAD_MTU = 64
@@ -449,7 +472,7 @@ func TestLoadClientConfigFallsBackToJSONWhenTOMLIsMissing(t *testing.T) {
 	if err := os.WriteFile(jsonPath, []byte(`{
   "PROTOCOL_TYPE": "SOCKS5",
   "DOMAINS": ["json.example.com"],
-  "DATA_ENCRYPTION_METHOD": 1,
+  "DATA_ENCRYPTION_METHOD": 5,
   "ENCRYPTION_KEY": "json-secret",
   "MAX_UPLOAD_MTU": 140
 }`), 0o644); err != nil {
@@ -497,7 +520,7 @@ func TestLoadClientConfigFromJSONBase64AppliesDefaultsAndLoadsResolvers(t *testi
 	rawJSON := `{
   "PROTOCOL_TYPE": "SOCKS5",
   "DOMAINS": ["base64.example.com"],
-  "DATA_ENCRYPTION_METHOD": 1,
+  "DATA_ENCRYPTION_METHOD": 5,
   "ENCRYPTION_KEY": "base64-secret"
 }`
 	encoded := base64.StdEncoding.EncodeToString([]byte(rawJSON))
@@ -528,7 +551,7 @@ func TestLoadClientConfigFromJSONBase64WithOverridesAppliesBeforeFinalize(t *tes
 
 	rawJSON := `{
   "PROTOCOL_TYPE": "SOCKS5",
-  "DATA_ENCRYPTION_METHOD": 1
+  "DATA_ENCRYPTION_METHOD": 5
 }`
 	encoded := base64.StdEncoding.EncodeToString([]byte(rawJSON))
 

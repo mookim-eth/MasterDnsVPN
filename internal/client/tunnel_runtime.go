@@ -293,7 +293,7 @@ func (c *Client) exchangeDNSOverConnection(conn Connection, query []byte, timeou
 
 	c.putUDPConn(conn.ResolverLabel, udpConn)
 
-	packet, err := dnsparser.ExtractVPNResponse(response, c.responseMode == mtuProbeBase64Reply)
+	packet, err := dnsparser.ExtractEncryptedVPNResponse(response, c.codec, c.responseMode == mtuProbeBase64Reply)
 	if err != nil {
 		return VpnProto.Packet{}, err
 	}

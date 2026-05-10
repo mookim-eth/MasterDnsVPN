@@ -34,11 +34,11 @@ func createTestClient(t *testing.T) *Client {
 		RXChannelSize:        10,
 		RX_TX_Workers:        1,
 		TunnelProcessWorkers: 1,
-		DataEncryptionMethod: 1,
+		DataEncryptionMethod: 5,
 		EncryptionKey:        "testkey",
 	}
 	log := logger.New("TestLogger", "debug")
-	codec, err := security.NewCodec(1, "testkey")
+	codec, err := security.NewCodec(5, "testkey")
 	if err != nil {
 		t.Fatalf("failed to create codec: %v", err)
 	}
@@ -462,4 +462,99 @@ func TestHandleInboundPacketTreatsServerFailureWithoutTXTAsResolverFailure(t *te
 	if stats.windowLost.Load() != 1 {
 		t.Fatalf("expected one timeout-window failure after SERVFAIL response, got=%d", stats.windowLost.Load())
 	}
+}
+
+func TestHandleInboundPacketRejectsWrongSessionCookie(t *testing.T) {
+	c := createTestClient(t)
+	c.sessionReady = true
+	c.sessionID = 7
+	c.sessionCookie = 9
+	c.sessionResetSignal = make(chan struct{}, 1)
+	addr := &net.UDPAddr{IP: net.ParseIP("8.8.8.8"), Port: 53}
+
+	response, dnsID := buildEncryptedInboundResponse(t, c, VpnProto.Packet{
+		SessionID:     7,
+		SessionCookie: 8,
+		PacketType:    Enums.PACKET_ERROR_DROP,
+		Payload:       []byte("drop"),
+	})
+	pendingKey := balancerResolverSampleKey{resolverAddr: addr.String(), dnsID: dnsID}
+	c.balancer.pendingStoreForTest(pendingKey, balancerResolverSample{
+		serverKey: "resolver-a",
+		sentAt:    time.Now().Add(-200 * time.Millisecond),
+	})
+
+	c.handleInboundPacket(response, addr, "")
+
+	if c.runtimeResetPending.Load() {
+		t.Fatal("wrong-cookie packet must not request a session reset")
+	}
+	if _, ok := c.balancer.pendingLookupForTest(pendingKey); !ok {
+		t.Fatal("wrong-cookie packet should not consume the pending resolver sample")
+	}
+}
+
+func TestHandleInboundPacketRequiresPendingResolverSample(t *testing.T) {
+	c := createTestClient(t)
+	c.sessionReady = true
+	c.sessionID = 7
+	c.sessionCookie = 9
+	c.sessionResetSignal = make(chan struct{}, 1)
+	addr := &net.UDPAddr{IP: net.ParseIP("8.8.8.8"), Port: 53}
+
+	response, _ := buildEncryptedInboundResponse(t, c, VpnProto.Packet{
+		SessionID:     7,
+		SessionCookie: 9,
+		PacketType:    Enums.PACKET_ERROR_DROP,
+		Payload:       []byte("drop"),
+	})
+
+	c.handleInboundPacket(response, addr, "")
+
+	if c.runtimeResetPending.Load() {
+		t.Fatal("response without a matching pending resolver sample must not be dispatched")
+	}
+}
+
+func TestHandleInboundPacketAcceptsValidSessionScopedPacket(t *testing.T) {
+	c := createTestClient(t)
+	c.sessionReady = true
+	c.sessionID = 7
+	c.sessionCookie = 9
+	c.sessionResetSignal = make(chan struct{}, 1)
+	addr := &net.UDPAddr{IP: net.ParseIP("8.8.8.8"), Port: 53}
+
+	response, dnsID := buildEncryptedInboundResponse(t, c, VpnProto.Packet{
+		SessionID:     7,
+		SessionCookie: 9,
+		PacketType:    Enums.PACKET_ERROR_DROP,
+		Payload:       []byte("drop"),
+	})
+	c.balancer.pendingStoreForTest(balancerResolverSampleKey{
+		resolverAddr: addr.String(),
+		dnsID:        dnsID,
+	}, balancerResolverSample{
+		serverKey: "resolver-a",
+		sentAt:    time.Now().Add(-200 * time.Millisecond),
+	})
+
+	c.handleInboundPacket(response, addr, "")
+
+	if !c.runtimeResetPending.Load() {
+		t.Fatal("valid session-scoped error packet should request a session reset")
+	}
+}
+
+func buildEncryptedInboundResponse(t *testing.T, c *Client, packet VpnProto.Packet) ([]byte, uint16) {
+	t.Helper()
+
+	query, err := DnsParser.BuildTXTQuestionPacket("x.v.example.com", Enums.DNS_RECORD_TYPE_TXT, 4096)
+	if err != nil {
+		t.Fatalf("BuildTXTQuestionPacket returned error: %v", err)
+	}
+	response, err := DnsParser.BuildEncryptedVPNResponsePacket(query, "x.v.example.com", packet, c.codec, false)
+	if err != nil {
+		t.Fatalf("BuildEncryptedVPNResponsePacket returned error: %v", err)
+	}
+	return response, binary.BigEndian.Uint16(response[:2])
 }

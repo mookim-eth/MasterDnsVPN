@@ -15,6 +15,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	Enums "masterdnsvpn-go/internal/enums"
@@ -100,26 +101,58 @@ func validateSOCKSTargetHost(host string) error {
 		return nil
 	}
 
-	if !ip.IsGlobalUnicast() ||
-		ip.IsLoopback() ||
+	if !ip.IsGlobalUnicast() || isBlockedSOCKSTargetIP(ip) {
+		return &blockedSOCKSTargetError{host: host}
+	}
+
+	return nil
+}
+
+func isBlockedSOCKSTargetIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+
+	if ip.IsLoopback() ||
 		ip.IsPrivate() ||
 		ip.IsMulticast() ||
 		ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() ||
 		ip.IsUnspecified() {
-		return &blockedSOCKSTargetError{host: host}
+		return true
 	}
 
 	if v4 := ip.To4(); v4 != nil {
 		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
-			return &blockedSOCKSTargetError{host: host}
+			return true
 		}
 		if v4[0] == 198 && (v4[1] == 18 || v4[1] == 19) {
-			return &blockedSOCKSTargetError{host: host}
+			return true
 		}
 	}
 
+	return false
+}
+
+func validateSOCKSDialAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	host = strings.Trim(host, "[]")
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil
+	}
+	if isBlockedSOCKSTargetIP(ip) {
+		return &blockedSOCKSTargetError{host: host}
+	}
 	return nil
+}
+
+func rejectBlockedSOCKSDialControl(_ context.Context, _ string, address string, _ syscall.RawConn) error {
+	return validateSOCKSDialAddress(address)
 }
 
 func (s *Server) dialTCPTarget(address string) (net.Conn, error) {
@@ -141,7 +174,10 @@ func (s *Server) dialTCPTargetContext(ctx context.Context, address string) (net.
 	startedAt := logger.NowUnixNano()
 
 	if dialFn == nil {
-		dialer := net.Dialer{Timeout: timeout}
+		dialer := net.Dialer{
+			Timeout:        timeout,
+			ControlContext: rejectBlockedSOCKSDialControl,
+		}
 		conn, err := dialer.DialContext(ctx, "tcp", address)
 		return conn, err
 	}

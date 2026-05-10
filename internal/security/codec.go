@@ -10,7 +10,6 @@ package security
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -373,8 +372,15 @@ func deriveKey(method int, rawKey string) []byte {
 		sum := sha256.Sum256(bKey)
 		return sum[:]
 	case 3:
-		sum := md5.Sum(bKey)
-		return sum[:]
+		sum := sha256.Sum256(bKey)
+		key := make([]byte, 16)
+		copy(key, sum[:16])
+		return key
+	case 4:
+		sum := sha256.Sum256(bKey)
+		key := make([]byte, 24)
+		copy(key, sum[:24])
+		return key
 	default:
 		key := make([]byte, targetLen)
 		copy(key, bKey)

@@ -13,6 +13,7 @@ import (
 
 func TestHandleMTUDownRequestBuildsZeroFilledPayload(t *testing.T) {
 	s := &Server{
+		codec: newTestCodec(t),
 		mtuProbePayloadPool: sync.Pool{
 			New: func() any {
 				return make([]byte, mtuProbeMaxDownSize)
@@ -41,9 +42,9 @@ func TestHandleMTUDownRequestBuildsZeroFilledPayload(t *testing.T) {
 		t.Fatal("expected response packet")
 	}
 
-	packet, err := DnsParser.ExtractVPNResponse(response, false)
+	packet, err := DnsParser.ExtractEncryptedVPNResponse(response, s.codec, false)
 	if err != nil {
-		t.Fatalf("ExtractVPNResponse returned error: %v", err)
+		t.Fatalf("ExtractEncryptedVPNResponse returned error: %v", err)
 	}
 	if packet.PacketType != Enums.PACKET_MTU_DOWN_RES {
 		t.Fatalf("unexpected packet type: got=%d want=%d", packet.PacketType, Enums.PACKET_MTU_DOWN_RES)

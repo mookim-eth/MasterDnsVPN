@@ -19,6 +19,7 @@ import (
 	baseCodec "masterdnsvpn-go/internal/basecodec"
 	"masterdnsvpn-go/internal/compression"
 	Enums "masterdnsvpn-go/internal/enums"
+	"masterdnsvpn-go/internal/security"
 	VpnProto "masterdnsvpn-go/internal/vpnproto"
 )
 
@@ -254,7 +255,37 @@ func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayl
 }
 
 func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet VpnProto.Packet, baseEncode bool) ([]byte, error) {
-	rawFrame, err := VpnProto.BuildRawAuto(VpnProto.BuildOptions{
+	rawFrame, err := buildVPNResponseFrame(packet)
+	if err != nil {
+		return nil, err
+	}
+	return buildVPNResponsePacketFromFrame(questionPacket, answerName, rawFrame, baseEncode, false)
+}
+
+// BuildEncryptedVPNResponsePacket serializes, encrypts, and wraps a VPN response
+// into DNS TXT answers. Server-to-client packets must use this path; otherwise
+// packet types, session identifiers, sequence numbers, and payload bytes are
+// exposed verbatim inside TXT RDATA. The baseEncode flag only controls DNS TXT
+// safety/compatibility for the encrypted blob and is not a security boundary.
+func BuildEncryptedVPNResponsePacket(questionPacket []byte, answerName string, packet VpnProto.Packet, codec *security.Codec, baseEncode bool) ([]byte, error) {
+	if codec == nil {
+		return nil, VpnProto.ErrCodecUnavailable
+	}
+
+	rawFrame, err := buildVPNResponseFrame(packet)
+	if err != nil {
+		return nil, err
+	}
+
+	protectedFrame, err := codec.Encrypt(rawFrame)
+	if err != nil {
+		return nil, err
+	}
+	return buildVPNResponsePacketFromFrame(questionPacket, answerName, protectedFrame, baseEncode, true)
+}
+
+func buildVPNResponseFrame(packet VpnProto.Packet) ([]byte, error) {
+	return VpnProto.BuildRawAuto(VpnProto.BuildOptions{
 		SessionID:       packet.SessionID,
 		PacketType:      packet.PacketType,
 		SessionCookie:   packet.SessionCookie,
@@ -265,20 +296,24 @@ func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet Vpn
 		CompressionType: packet.CompressionType,
 		Payload:         packet.Payload,
 	}, compression.DefaultMinSize)
+}
 
-	if err != nil {
-		return nil, err
-	}
-
+func buildVPNResponsePacketFromFrame(questionPacket []byte, answerName string, frame []byte, baseEncode bool, opaque bool) ([]byte, error) {
 	maxChunk := maxTXTAnswerPayload
 	if baseEncode {
 		maxChunk = maxTXTEncodedChunk
 	}
-	if len(rawFrame) <= maxChunk {
-		return buildSingleTXTResponsePacket(questionPacket, answerName, buildTXTAnswerChunk(rawFrame, baseEncode))
+	if len(frame) <= maxChunk {
+		return buildSingleTXTResponsePacket(questionPacket, answerName, buildTXTAnswerChunk(frame, baseEncode))
 	}
 
-	answerPayloads, err := buildTXTAnswerChunks(rawFrame, baseEncode)
+	var answerPayloads [][]byte
+	var err error
+	if opaque {
+		answerPayloads, err = buildOpaqueTXTAnswerChunks(frame, baseEncode)
+	} else {
+		answerPayloads, err = buildTXTAnswerChunks(frame, baseEncode)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +403,35 @@ func ExtractVPNResponse(packet []byte, baseEncoded bool) (VpnProto.Packet, error
 	}
 
 	return assembleVPNResponse(rawAnswers, baseEncoded)
+}
+
+// ExtractEncryptedVPNResponse extracts TXT payloads, reassembles the encrypted
+// response blob, decrypts it with the shared tunnel codec, then parses the VPN
+// frame. This is the inverse of BuildEncryptedVPNResponsePacket.
+func ExtractEncryptedVPNResponse(packet []byte, codec *security.Codec, baseEncoded bool) (VpnProto.Packet, error) {
+	parsed, err := ParsePacket(packet)
+	if err != nil {
+		return VpnProto.Packet{}, err
+	}
+
+	rawAnswers := extractTXTAnswerPayloads(parsed)
+	if len(rawAnswers) == 0 {
+		return VpnProto.Packet{}, ErrTXTAnswerMissing
+	}
+
+	protectedFrame, err := assembleOpaqueTXTAnswerPayload(rawAnswers, baseEncoded)
+	if err != nil {
+		return VpnProto.Packet{}, err
+	}
+	if codec == nil {
+		return VpnProto.Packet{}, VpnProto.ErrCodecUnavailable
+	}
+
+	rawFrame, err := codec.Decrypt(protectedFrame)
+	if err != nil {
+		return VpnProto.Packet{}, err
+	}
+	return VpnProto.ParseInflated(rawFrame)
 }
 
 func DescribeResponseWithoutTunnelPayload(packet []byte) string {
@@ -474,6 +538,63 @@ func BuildTunnelQuestionName(domain string, encodedFrame string) (string, error)
 		return "", ErrInvalidName
 	}
 	return name, nil
+}
+
+func buildOpaqueTXTAnswerChunks(rawFrame []byte, baseEncode bool) ([][]byte, error) {
+	maxChunk := maxTXTAnswerPayload
+	if baseEncode {
+		maxChunk = maxTXTEncodedChunk
+	}
+
+	if len(rawFrame) == 0 {
+		return [][]byte{appendLengthPrefixedTXT(nil)}, nil
+	}
+
+	if len(rawFrame) <= maxChunk {
+		return [][]byte{buildTXTAnswerChunk(rawFrame, baseEncode)}, nil
+	}
+
+	maxChunk0Data := max(maxChunk-2, 0)
+	maxChunkNData := max(maxChunk-1, 0)
+	if maxChunk0Data == 0 || maxChunkNData == 0 {
+		return nil, ErrTXTAnswerTooLarge
+	}
+
+	remaining := len(rawFrame) - maxChunk0Data
+	totalChunks := 1
+	if remaining > 0 {
+		totalChunks += (remaining + maxChunkNData - 1) / maxChunkNData
+	}
+	if totalChunks > 255 {
+		return nil, ErrTXTAnswerTooLarge
+	}
+
+	chunks := make([][]byte, 0, totalChunks)
+	chunk0DataLen := min(maxChunk0Data, len(rawFrame))
+	rawChunk0 := make([]byte, 2+chunk0DataLen)
+	rawChunk0[0] = 0x00
+	rawChunk0[1] = byte(totalChunks)
+	copy(rawChunk0[2:], rawFrame[:chunk0DataLen])
+	if baseEncode {
+		chunks = append(chunks, appendLengthPrefixedBase64TXT(rawChunk0))
+	} else {
+		chunks = append(chunks, appendLengthPrefixedTXT(rawChunk0))
+	}
+
+	for chunkID, cursor := 1, chunk0DataLen; cursor < len(rawFrame); chunkID++ {
+		end := min(cursor+maxChunkNData, len(rawFrame))
+		rawChunk := make([]byte, 1+end-cursor)
+		rawChunk[0] = byte(chunkID)
+		copy(rawChunk[1:], rawFrame[cursor:end])
+		if baseEncode {
+			chunks = append(chunks, appendLengthPrefixedBase64TXT(rawChunk))
+		} else {
+			chunks = append(chunks, appendLengthPrefixedTXT(rawChunk))
+		}
+		cursor = end
+	}
+
+	return chunks, nil
 }
 
 func buildTXTAnswerChunks(rawFrame []byte, baseEncode bool) ([][]byte, error) {
@@ -652,6 +773,97 @@ func extractTXTBytes(rData []byte) []byte {
 		offset += size
 	}
 	return out
+}
+
+func assembleOpaqueTXTAnswerPayload(rawAnswers [][]byte, baseEncoded bool) ([]byte, error) {
+	if len(rawAnswers) == 0 {
+		return nil, ErrTXTAnswerMissing
+	}
+
+	if len(rawAnswers) == 1 {
+		raw := rawAnswers[0]
+		if baseEncoded {
+			decoded, err := baseCodec.DecodeRawBase64(raw)
+			if err != nil {
+				return nil, err
+			}
+			raw = decoded
+		}
+		return append([]byte(nil), raw...), nil
+	}
+
+	chunks := make(map[byte][]byte, 256)
+	totalExpected := 0
+	seenChunks := 0
+	headerSeen := false
+
+	for _, raw := range rawAnswers {
+		if baseEncoded {
+			decoded, err := baseCodec.DecodeRawBase64(raw)
+			if err != nil {
+				return nil, err
+			}
+			raw = decoded
+		}
+		if len(raw) == 0 {
+			continue
+		}
+
+		if raw[0] == 0x00 {
+			if len(raw) < 2 {
+				return nil, ErrTXTAnswerMalformed
+			}
+			if headerSeen {
+				return nil, ErrTXTAnswerMalformed
+			}
+			totalExpected = int(raw[1])
+			if totalExpected <= 0 || totalExpected > 255 {
+				return nil, ErrTXTAnswerMalformed
+			}
+			headerSeen = true
+			if chunks[0] != nil {
+				return nil, ErrTXTAnswerMalformed
+			}
+			seenChunks++
+			chunks[0] = append([]byte(nil), raw[2:]...)
+			continue
+		}
+
+		chunkID := int(raw[0])
+		if chunkID <= 0 || chunkID > 255 {
+			return nil, ErrTXTAnswerMalformed
+		}
+		chunkKey := byte(chunkID)
+		if chunks[chunkKey] != nil {
+			return nil, ErrTXTAnswerMalformed
+		}
+		seenChunks++
+		chunks[chunkKey] = append([]byte(nil), raw[1:]...)
+	}
+
+	if !headerSeen || totalExpected <= 0 || seenChunks != totalExpected {
+		return nil, ErrTXTAnswerMalformed
+	}
+	for i := range totalExpected {
+		if chunks[byte(i)] == nil {
+			return nil, ErrTXTAnswerMalformed
+		}
+	}
+	for i := totalExpected; i <= 255; i++ {
+		if chunks[byte(i)] != nil {
+			return nil, ErrTXTAnswerMalformed
+		}
+	}
+
+	totalLen := 0
+	for i := range totalExpected {
+		totalLen += len(chunks[byte(i)])
+	}
+	out := make([]byte, 0, totalLen)
+	for i := range totalExpected {
+		out = append(out, chunks[byte(i)]...)
+	}
+	return out, nil
 }
 
 func assembleVPNResponse(rawAnswers [][]byte, baseEncoded bool) (VpnProto.Packet, error) {

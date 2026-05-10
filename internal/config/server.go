@@ -155,7 +155,7 @@ func defaultServerConfig() ServerConfig {
 		MinVPNLabelLength:                 3,
 		SupportedUploadCompressionTypes:   []int{0, 1, 2, 3},
 		SupportedDownloadCompressionTypes: []int{0, 1, 2, 3},
-		DataEncryptionMethod:              1,
+		DataEncryptionMethod:              5,
 		EncryptionKeyFile:                 "encrypt_key.txt",
 		LogLevel:                          "INFO",
 		ARQWindowSize:                     800,
@@ -426,8 +426,8 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 	cfg.SupportedUploadCompressionTypes = normalizeCompressionTypeList(cfg.SupportedUploadCompressionTypes)
 	cfg.SupportedDownloadCompressionTypes = normalizeCompressionTypeList(cfg.SupportedDownloadCompressionTypes)
 
-	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 5 {
-		cfg.DataEncryptionMethod = 1
+	if cfg.DataEncryptionMethod < 3 || cfg.DataEncryptionMethod > 5 {
+		return cfg, fmt.Errorf("invalid DATA_ENCRYPTION_METHOD: %d (strong profile requires AES-GCM method 3, 4, or 5)", cfg.DataEncryptionMethod)
 	}
 
 	if cfg.EncryptionKeyFile == "" {
@@ -782,11 +782,12 @@ func NewServerConfigFlagBinder(fs *flag.FlagSet) (*ServerConfigFlagBinder, error
 }
 
 func (b *ServerConfigFlagBinder) Overrides() ServerConfigOverrides {
+	if b == nil {
+		return ServerConfigOverrides{Values: make(map[string]any)}
+	}
+
 	overrides := ServerConfigOverrides{
 		Values: make(map[string]any, len(b.setFields)),
-	}
-	if b == nil {
-		return overrides
 	}
 
 	valueElem := reflect.ValueOf(&b.values).Elem()

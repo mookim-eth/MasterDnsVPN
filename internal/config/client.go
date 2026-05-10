@@ -157,7 +157,7 @@ func defaultClientConfig() ClientConfig {
 		UploadCompressionType:                 compression.TypeOff,
 		DownloadCompressionType:               compression.TypeOff,
 		CompressionMinSize:                    compression.DefaultMinSize,
-		DataEncryptionMethod:                  1,
+		DataEncryptionMethod:                  5,
 		EncryptionKey:                         "",
 		MinUploadMTU:                          38,
 		MinDownloadMTU:                        100,
@@ -341,8 +341,8 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 		return cfg, fmt.Errorf("invalid PROTOCOL_TYPE: %q", cfg.ProtocolType)
 	}
 
-	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 5 {
-		return cfg, fmt.Errorf("invalid DATA_ENCRYPTION_METHOD: %d", cfg.DataEncryptionMethod)
+	if cfg.DataEncryptionMethod < 3 || cfg.DataEncryptionMethod > 5 {
+		return cfg, fmt.Errorf("invalid DATA_ENCRYPTION_METHOD: %d (strong profile requires AES-GCM method 3, 4, or 5)", cfg.DataEncryptionMethod)
 	}
 
 	cfg.ListenIP = defaultString(strings.TrimSpace(cfg.ListenIP), "127.0.0.1")
@@ -820,11 +820,12 @@ func NewClientConfigFlagBinder(fs *flag.FlagSet) (*ClientConfigFlagBinder, error
 }
 
 func (b *ClientConfigFlagBinder) Overrides() ClientConfigOverrides {
+	if b == nil {
+		return ClientConfigOverrides{Values: make(map[string]any)}
+	}
+
 	overrides := ClientConfigOverrides{
 		Values: make(map[string]any, len(b.setFields)),
-	}
-	if b == nil {
-		return overrides
 	}
 
 	valueElem := reflect.ValueOf(&b.values).Elem()

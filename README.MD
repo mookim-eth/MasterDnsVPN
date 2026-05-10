@@ -17,7 +17,7 @@ This system is designed around compatibility with many resolver behaviors and ha
 | Protocol type | Advanced DNS tunnel | Classic DNS tunnel | Advanced DNS tunnel / VPN |
 | Transport protocol | QUIC | KCP + Noise | Custom protocol + ARQ |
 | Transport header overhead | 🟠 ~24B | 🔴 ~59B | 🟢 ~5–7B<br>≈88% lower than DNSTT<br>≈71% lower than SlipStream |
-| Encryption style | TLS 1.3 (inside QUIC) | Noise (Curve25519) | AES / ChaCha20 / XOR (if XOR is used: lightweight with lower security and no extra overhead) |
+| Encryption style | TLS 1.3 (inside QUIC) | Noise (Curve25519) | AES-GCM by default in the hardened profile (legacy unauthenticated modes are rejected by config) |
 | Architecture | Unified (QUIC handles everything) | Multi-layered (KCP + SMUX + Noise) | 🟢 Lightweight custom design optimized for DNS |
 | Speed | 🟡 High (up to ~5× faster than DNSTT) | 🔴 Medium | 🟢 Faster than others<br>Up to ~9× faster than DNSTT<br>Up to ~3.6× faster than SlipStream |
 | Stability under packet loss | 🟡 Good | 🟠 Medium | 🟢 Very high (Multipath + ARQ) |
@@ -570,7 +570,7 @@ These settings are critical on the server:
 | :--- | :--- | :--- | :--- |
 | `PROTOCOL_TYPE` | `"SOCKS5"` | `"SOCKS5"` or `"TCP"` | Chooses the local service mode exposed by the client.<br>`SOCKS5` is the default and recommended mode for normal use.<br>`TCP` is useful when you want to forward traffic to one fixed remote target instead of giving applications a SOCKS proxy. |
 | `DOMAINS` | `["v.example.com"]` | Non-empty list of strings | These are the tunnel domains used to build DNS requests.<br>Every domain here must belong to the same tunnel you configured on the server.<br>If this list is wrong, the client may build valid DNS queries that the server will simply ignore. |
-| `DATA_ENCRYPTION_METHOD` | `1` | `0..5` | Must match the server.<br>`0=None`, `1=XOR`, `2=ChaCha20`, `3=AES-128-GCM`, `4=AES-192-GCM`, `5=AES-256-GCM`.<br>XOR is lightweight but weaker. AEAD modes are stronger but have more overhead. |
+| `DATA_ENCRYPTION_METHOD` | `5` | `3..5` | Must match the server.<br>`3=AES-128-GCM`, `4=AES-192-GCM`, `5=AES-256-GCM`.<br>The hardened profile rejects unauthenticated modes (`0=None`, `1=XOR`, `2=ChaCha20`). |
 | `ENCRYPTION_KEY` | `""` | String | Shared secret used by the client codec.<br>This must be exactly the same as the server-side encryption key.<br>If the key is wrong, packets may be parsed as garbage and the tunnel will not work. |
 
 ### 3.4.2) 🧦 Local Proxy
@@ -776,7 +776,7 @@ These settings are critical on the server:
 
 | Parameter | Sample Value | Allowed Values / Real Behavior | Full Explanation |
 | :--- | :--- | :--- | :--- |
-| `DATA_ENCRYPTION_METHOD` | `1` | `0..5` | Must match the client.<br>If an invalid value is supplied, the current code normalizes it back to `1`. |
+| `DATA_ENCRYPTION_METHOD` | `5` | `3..5` | Must match the client.<br>The hardened profile rejects invalid or unauthenticated modes instead of falling back to XOR. |
 | `ENCRYPTION_KEY_FILE` | `"encrypt_key.txt"` | relative or absolute path | Path to the server encryption key file.<br>If it is relative, it is resolved relative to the config directory.<br>If it is empty, the fallback is `encrypt_key.txt`. |
 
 ### 3.5.8) 🔄 ARQ, Packing, and Control TTLs

@@ -79,6 +79,7 @@ func TestHandleSessionInitRequestIncludesServerClientPolicy(t *testing.T) {
 
 	s := &Server{
 		cfg:                     cfg,
+		codec:                   newTestCodec(t),
 		sessions:                newSessionStore(16, 32),
 		uploadCompressionMask:   1 << compression.TypeOff,
 		downloadCompressionMask: 1 << compression.TypeOff,
@@ -106,9 +107,9 @@ func TestHandleSessionInitRequestIncludesServerClientPolicy(t *testing.T) {
 		t.Fatal("expected session accept response")
 	}
 
-	packet, err := DnsParser.ExtractVPNResponse(response, false)
+	packet, err := DnsParser.ExtractEncryptedVPNResponse(response, s.codec, false)
 	if err != nil {
-		t.Fatalf("ExtractVPNResponse returned error: %v", err)
+		t.Fatalf("ExtractEncryptedVPNResponse returned error: %v", err)
 	}
 	if packet.PacketType != Enums.PACKET_SESSION_ACCEPT {
 		t.Fatalf("unexpected packet type: got=%d want=%d", packet.PacketType, Enums.PACKET_SESSION_ACCEPT)

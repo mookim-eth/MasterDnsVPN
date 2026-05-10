@@ -183,15 +183,13 @@ FORWARD_PORT = 0
 # - Controls payload encryption method and where the server key is loaded from.
 # ------------------------------------------------------------------------------
 
-# Allowed values:
-# 0 = None
-# 1 = XOR
-# 2 = ChaCha20
+# Allowed values in the hardened profile:
 # 3 = AES-128-GCM
 # 4 = AES-192-GCM
 # 5 = AES-256-GCM
+# Unauthenticated legacy modes (0=None, 1=XOR, 2=ChaCha20) are rejected.
 # Must match the client.
-DATA_ENCRYPTION_METHOD = 1
+DATA_ENCRYPTION_METHOD = 5
 
 # Relative or absolute path to the encryption key file.
 ENCRYPTION_KEY_FILE = "encrypt_key.txt"

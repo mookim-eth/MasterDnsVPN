@@ -191,7 +191,7 @@ func runOnce(ctx context.Context, direction string, runIndex int) (BenchResult, 
 	UDP_PORT = %d
 	DOMAIN = ["a.io"]
 	MIN_VPN_LABEL_LENGTH = 1
-	DATA_ENCRYPTION_METHOD = 1
+	DATA_ENCRYPTION_METHOD = 5
 	ENCRYPTION_KEY_FILE = "encrypt_key.txt"
 	FORWARD_IP = "127.0.0.1"
 	FORWARD_PORT = %d
@@ -257,7 +257,7 @@ func runOnce(ctx context.Context, direction string, runIndex int) (BenchResult, 
 	DOMAINS = ["a.io"]
 	ENCRYPTION_KEY = "%s"
 	RESOLVER_BALANCING_STRATEGY = 1
-	DATA_ENCRYPTION_METHOD = 1
+	DATA_ENCRYPTION_METHOD = 5
 	PACKET_DUPLICATION_COUNT = 1
 	SETUP_PACKET_DUPLICATION_COUNT = 1
 	MIN_UPLOAD_MTU = 120

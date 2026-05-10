@@ -993,6 +993,25 @@ func TestValidateSOCKSTargetHostAllowsPublicTargets(t *testing.T) {
 	}
 }
 
+func TestValidateSOCKSDialAddressRejectsResolvedPrivateAddresses(t *testing.T) {
+	cases := []string{
+		"127.0.0.1:80",
+		"10.0.0.5:443",
+		"[::1]:80",
+		"[fc00::1]:443",
+	}
+
+	for _, address := range cases {
+		if err := validateSOCKSDialAddress(address); err == nil {
+			t.Fatalf("expected dial address %q to be rejected", address)
+		}
+	}
+
+	if err := validateSOCKSDialAddress("8.8.8.8:53"); err != nil {
+		t.Fatalf("expected public dial address to be allowed, got %v", err)
+	}
+}
+
 func TestDialSOCKSStreamTargetRejectsBlockedTargetBeforeDial(t *testing.T) {
 	s := newTestServerForStreamSyn("SOCKS5")
 	s.useExternalSOCKS5 = true

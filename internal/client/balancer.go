@@ -619,9 +619,9 @@ func (b *Balancer) TrackResolverSuccess(
 	localAddr string,
 	receivedAt time.Time,
 	rtt time.Duration,
-) {
+) bool {
 	if b == nil || len(packet) < 2 || addr == nil {
-		return
+		return false
 	}
 
 	b.mu.RLock()
@@ -644,7 +644,7 @@ func (b *Balancer) TrackResolverSuccess(
 	shard.mu.Unlock()
 
 	if !ok || sample.serverKey == "" {
-		return
+		return false
 	}
 	if sample.timedOut && !sample.timedOutAt.IsZero() {
 		b.RetractTimeout(sample.serverKey, receivedAt, window)
@@ -655,6 +655,7 @@ func (b *Balancer) TrackResolverSuccess(
 	if rtt > 0 {
 		b.ReportSuccess(sample.serverKey, rtt)
 	}
+	return true
 }
 
 func (b *Balancer) TrackResolverFailure(
