@@ -23,6 +23,7 @@ var (
 	ErrTargetTooShort         = errors.New("socks target payload too short")
 	ErrUnsupportedAddressType = errors.New("unsupported socks address type")
 	ErrInvalidDomainLength    = errors.New("invalid socks domain length")
+	ErrTargetTrailingData     = errors.New("socks target payload has trailing data")
 )
 
 type Target struct {
@@ -32,8 +33,19 @@ type Target struct {
 }
 
 func ParseTargetPayload(payload []byte) (Target, error) {
+	target, offset, err := parseTargetPayloadWithOffset(payload)
+	if err != nil {
+		return Target{}, err
+	}
+	if offset != len(payload) {
+		return Target{}, ErrTargetTrailingData
+	}
+	return target, nil
+}
+
+func parseTargetPayloadWithOffset(payload []byte) (Target, int, error) {
 	if len(payload) < 3 {
-		return Target{}, ErrTargetTooShort
+		return Target{}, 0, ErrTargetTooShort
 	}
 
 	target := Target{AddressType: payload[0]}
@@ -42,35 +54,36 @@ func ParseTargetPayload(payload []byte) (Target, error) {
 	switch payload[0] {
 	case AddressTypeIPv4:
 		if len(payload) < offset+4+2 {
-			return Target{}, ErrTargetTooShort
+			return Target{}, 0, ErrTargetTooShort
 		}
 		ip := net.IP(payload[offset : offset+4])
 		target.Host = ip.String()
 		offset += 4
 	case AddressTypeDomain:
 		if len(payload) < offset+1 {
-			return Target{}, ErrTargetTooShort
+			return Target{}, 0, ErrTargetTooShort
 		}
 		domainLength := int(payload[offset])
 		offset++
 		if domainLength < 1 || len(payload) < offset+domainLength+2 {
-			return Target{}, ErrInvalidDomainLength
+			return Target{}, 0, ErrInvalidDomainLength
 		}
 		target.Host = string(payload[offset : offset+domainLength])
 		offset += domainLength
 	case AddressTypeIPv6:
 		if len(payload) < offset+16+2 {
-			return Target{}, ErrTargetTooShort
+			return Target{}, 0, ErrTargetTooShort
 		}
 		ip := net.IP(payload[offset : offset+16])
 		target.Host = ip.String()
 		offset += 16
 	default:
-		return Target{}, ErrUnsupportedAddressType
+		return Target{}, 0, ErrUnsupportedAddressType
 	}
 
 	target.Port = binary.BigEndian.Uint16(payload[offset : offset+2])
-	return target, nil
+	offset += 2
+	return target, offset, nil
 }
 
 func ParseIPv4(host string) net.IP {

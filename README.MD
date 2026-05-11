@@ -261,7 +261,7 @@ chmod 600 encrypt_key.txt
 cat encrypt_key.txt
 ```
 
-Copy the printed key into the client `ENCRYPTION_KEY`. The server no longer logs the raw active key during normal startup.
+Copy the printed key into the client `ENCRYPTION_KEY`. For `DATA_ENCRYPTION_METHOD = 5`, newly generated keys are 64 hex characters (32 random bytes). The server still loads older 32-character keys for compatibility, but logs a legacy-length warning; rotate them during a coordinated maintenance window. The server no longer logs the raw active key during normal startup.
 
 Run the server:
 
@@ -700,7 +700,7 @@ These settings are critical on the server:
 | `PROTOCOL_TYPE` | `"SOCKS5"` | `"SOCKS5"` or `"TCP"` | Chooses the local service mode exposed by the client.<br>`SOCKS5` is the default and recommended mode for normal use.<br>`TCP` is useful when you want to forward traffic to one fixed remote target instead of giving applications a SOCKS proxy. |
 | `DOMAINS` | `["v.example.com"]` | Non-empty list of strings | These are the tunnel domains used to build DNS requests.<br>Every domain here must belong to the same tunnel you configured on the server.<br>If this list is wrong, the client may build valid DNS queries that the server will simply ignore. |
 | `DATA_ENCRYPTION_METHOD` | `5` | `3..5` | Must match the server.<br>`3=AES-128-GCM`, `4=AES-192-GCM`, `5=AES-256-GCM`.<br>The hardened profile rejects unauthenticated modes (`0=None`, `1=XOR`, `2=ChaCha20`). |
-| `ENCRYPTION_KEY` | `""` | String | Shared secret used by the client codec.<br>This must be exactly the same as the server-side encryption key.<br>If the key is wrong, packets may be parsed as garbage and the tunnel will not work. |
+| `ENCRYPTION_KEY` | `""` | String | Shared secret used by the client codec.<br>This must be exactly the same as the server-side encryption key.<br>For AES-256-GCM, new hardened server keys are 64 hex characters; older 32-character keys still load but should be rotated.<br>If the key is wrong, packets may be parsed as garbage and the tunnel will not work. |
 
 ### 3.4.2) 🧦 Local Proxy
 
@@ -906,7 +906,7 @@ These settings are critical on the server:
 | Parameter | Sample Value | Allowed Values / Real Behavior | Full Explanation |
 | :--- | :--- | :--- | :--- |
 | `DATA_ENCRYPTION_METHOD` | `5` | `3..5` | Must match the client.<br>The hardened profile rejects invalid or unauthenticated modes instead of falling back to XOR. |
-| `ENCRYPTION_KEY_FILE` | `"encrypt_key.txt"` | relative or absolute path | Path to the server encryption key file.<br>If it is relative, it is resolved relative to the config directory.<br>If it is empty, the fallback is `encrypt_key.txt`. |
+| `ENCRYPTION_KEY_FILE` | `"encrypt_key.txt"` | relative or absolute path | Path to the server encryption key file.<br>If it is relative, it is resolved relative to the config directory.<br>If it is empty, the fallback is `encrypt_key.txt`.<br>New AES-256-GCM keys are generated as 64 hex characters; legacy shorter generated keys are loaded with a warning to avoid breaking existing clients. |
 
 ### 3.5.8) 🔄 ARQ, Packing, and Control TTLs
 

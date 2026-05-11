@@ -287,6 +287,12 @@ func TestAssembleOpaqueTXTAnswerPayloadRejectsDuplicateChunks(t *testing.T) {
 	}
 }
 
+func TestExtractTXTBytesRejectsMalformedCharacterStringLength(t *testing.T) {
+	if _, err := extractTXTBytes([]byte{0x03, 'a'}); !errors.Is(err, ErrTXTAnswerMalformed) {
+		t.Fatalf("expected malformed TXT RDATA error, got %v", err)
+	}
+}
+
 func TestExtractVPNResponseRejectsDuplicateChunkedAnswers(t *testing.T) {
 	query, err := BuildTXTQuestionPacket("x.v.example.com", Enums.DNS_RECORD_TYPE_TXT, 4096)
 	if err != nil {

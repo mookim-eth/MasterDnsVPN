@@ -397,7 +397,10 @@ func ExtractVPNResponse(packet []byte, baseEncoded bool) (VpnProto.Packet, error
 		return VpnProto.Packet{}, err
 	}
 
-	rawAnswers := extractTXTAnswerPayloads(parsed)
+	rawAnswers, err := extractTXTAnswerPayloads(parsed)
+	if err != nil {
+		return VpnProto.Packet{}, err
+	}
 	if len(rawAnswers) == 0 {
 		return VpnProto.Packet{}, ErrTXTAnswerMissing
 	}
@@ -414,7 +417,10 @@ func ExtractEncryptedVPNResponse(packet []byte, codec *security.Codec, baseEncod
 		return VpnProto.Packet{}, err
 	}
 
-	rawAnswers := extractTXTAnswerPayloads(parsed)
+	rawAnswers, err := extractTXTAnswerPayloads(parsed)
+	if err != nil {
+		return VpnProto.Packet{}, err
+	}
 	if len(rawAnswers) == 0 {
 		return VpnProto.Packet{}, ErrTXTAnswerMissing
 	}
@@ -711,9 +717,9 @@ func appendLengthPrefixedBase64TXT(data []byte) []byte {
 	return out
 }
 
-func extractTXTAnswerPayloads(parsed Packet) [][]byte {
+func extractTXTAnswerPayloads(parsed Packet) ([][]byte, error) {
 	if len(parsed.Answers) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	payloads := make([][]byte, 0, len(parsed.Answers))
@@ -721,21 +727,21 @@ func extractTXTAnswerPayloads(parsed Packet) [][]byte {
 		if answer.Type != Enums.DNS_RECORD_TYPE_TXT {
 			continue
 		}
-		raw := extractTXTBytes(answer.RData)
+		raw, err := extractTXTBytes(answer.RData)
+		if err != nil {
+			return nil, err
+		}
 		if len(raw) == 0 {
 			continue
 		}
 		payloads = append(payloads, raw)
 	}
-	return payloads
+	return payloads, nil
 }
 
-func extractTXTBytes(rData []byte) []byte {
+func extractTXTBytes(rData []byte) ([]byte, error) {
 	if len(rData) == 0 {
-		return nil
-	}
-	if int(rData[0])+1 == len(rData) {
-		return rData[1:]
+		return nil, nil
 	}
 
 	totalLen := 0
@@ -746,15 +752,14 @@ func extractTXTBytes(rData []byte) []byte {
 			continue
 		}
 		if offset+size > len(rData) {
-			totalLen += len(rData) - offset
-			break
+			return nil, ErrTXTAnswerMalformed
 		}
 		totalLen += size
 		offset += size
 	}
 
 	if totalLen == 0 {
-		return nil
+		return nil, nil
 	}
 
 	out := make([]byte, totalLen)
@@ -765,14 +770,10 @@ func extractTXTBytes(rData []byte) []byte {
 		if size == 0 {
 			continue
 		}
-		if offset+size > len(rData) {
-			writeOffset += copy(out[writeOffset:], rData[offset:])
-			break
-		}
 		writeOffset += copy(out[writeOffset:], rData[offset:offset+size])
 		offset += size
 	}
-	return out
+	return out, nil
 }
 
 func assembleOpaqueTXTAnswerPayload(rawAnswers [][]byte, baseEncoded bool) ([]byte, error) {

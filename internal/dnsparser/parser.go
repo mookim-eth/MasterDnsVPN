@@ -17,6 +17,7 @@ var (
 	ErrInvalidName     = errors.New("invalid dns name")
 	ErrInvalidQuestion = errors.New("invalid dns question section")
 	ErrInvalidAnswer   = errors.New("invalid dns resource record section")
+	ErrCountTooLarge   = errors.New("dns section count too large")
 	ErrNotDNSRequest   = errors.New("packet does not look like a supported dns request")
 )
 
@@ -96,6 +97,10 @@ func ParseDNSRequestLite(data []byte) (LitePacket, error) {
 }
 
 func parsePacketLiteWithHeader(data []byte, header Header) (LitePacket, error) {
+	if header.QDCount > maxLikelyQuestions {
+		return LitePacket{}, ErrCountTooLarge
+	}
+
 	packet := LitePacket{Header: header}
 	if header.QDCount == 0 {
 		packet.QuestionEndOffset = dnsHeaderSize
@@ -122,6 +127,10 @@ func ParsePacket(data []byte) (Packet, error) {
 	}
 
 	header := parseHeader(data)
+	if !isLikelyDNSPacketHeader(header) {
+		return Packet{}, ErrCountTooLarge
+	}
+
 	offset := dnsHeaderSize
 
 	questions, nextOffset, err := parseQuestions(data, offset, int(header.QDCount))

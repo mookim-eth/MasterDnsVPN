@@ -14,6 +14,7 @@ import (
 
 type Store[K comparable] struct {
 	mu        sync.Mutex
+	capacity  int
 	items     map[K]*entry
 	completed map[K]time.Time
 	lastPurge time.Time
@@ -31,6 +32,7 @@ func New[K comparable](capacity int) *Store[K] {
 		capacity = 16
 	}
 	return &Store[K]{
+		capacity:  capacity,
 		items:     make(map[K]*entry, capacity),
 		completed: make(map[K]time.Time, capacity),
 	}
@@ -54,7 +56,7 @@ func (s *Store[K]) Collect(key K, payload []byte, fragmentID uint8, totalFragmen
 		}
 
 		delete(s.items, key)
-		s.completed[key] = now.Add(retention)
+		s.addCompletedLocked(key, now.Add(retention))
 		return append([]byte(nil), payload...), true, false
 	}
 
@@ -76,6 +78,9 @@ func (s *Store[K]) Collect(key K, payload []byte, fragmentID uint8, totalFragmen
 
 	current, ok := s.items[key]
 	if !ok || current.totalFragments != totalFragments {
+		if !ok {
+			s.evictOldestItemsLocked(s.capacity - 1)
+		}
 		current = &entry{
 			createdAt:      now,
 			totalFragments: totalFragments,
@@ -109,7 +114,7 @@ func (s *Store[K]) Collect(key K, payload []byte, fragmentID uint8, totalFragmen
 
 	delete(s.items, key)
 	if retention > 0 {
-		s.completed[key] = now.Add(retention)
+		s.addCompletedLocked(key, now.Add(retention))
 	} else {
 		delete(s.completed, key)
 	}
@@ -175,5 +180,69 @@ func (s *Store[K]) purgeLocked(now time.Time, retention time.Duration) {
 		if !now.Before(expiresAt) {
 			delete(s.completed, key)
 		}
+	}
+	s.evictOldestItemsLocked(s.capacity)
+	s.evictEarliestCompletedLocked(s.capacity)
+}
+
+func (s *Store[K]) addCompletedLocked(key K, expiresAt time.Time) {
+	if s == nil {
+		return
+	}
+	if _, exists := s.completed[key]; !exists {
+		s.evictEarliestCompletedLocked(s.capacity - 1)
+	}
+	s.completed[key] = expiresAt
+}
+
+func (s *Store[K]) evictOldestItemsLocked(maxEntries int) {
+	if s == nil || maxEntries < 0 {
+		return
+	}
+	for len(s.items) > maxEntries {
+		var (
+			oldestKey K
+			oldestSet bool
+			oldest    time.Time
+		)
+		for key, current := range s.items {
+			if current == nil {
+				delete(s.items, key)
+				continue
+			}
+			if !oldestSet || current.createdAt.Before(oldest) {
+				oldestKey = key
+				oldest = current.createdAt
+				oldestSet = true
+			}
+		}
+		if !oldestSet {
+			return
+		}
+		delete(s.items, oldestKey)
+	}
+}
+
+func (s *Store[K]) evictEarliestCompletedLocked(maxEntries int) {
+	if s == nil || maxEntries < 0 {
+		return
+	}
+	for len(s.completed) > maxEntries {
+		var (
+			earliestKey K
+			earliestSet bool
+			earliest    time.Time
+		)
+		for key, expiresAt := range s.completed {
+			if !earliestSet || expiresAt.Before(earliest) {
+				earliestKey = key
+				earliest = expiresAt
+				earliestSet = true
+			}
+		}
+		if !earliestSet {
+			return
+		}
+		delete(s.completed, earliestKey)
 	}
 }

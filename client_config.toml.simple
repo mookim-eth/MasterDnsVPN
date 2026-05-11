@@ -30,6 +30,7 @@ DATA_ENCRYPTION_METHOD = 5
 # Shared encryption key.
 # Required on the client.
 # Must match the server-side key file contents.
+# New AES-256-GCM server keys are 64 hex characters; paste the whole value.
 ENCRYPTION_KEY = ""
 
 # ------------------------------------------------------------------------------

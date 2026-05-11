@@ -93,6 +93,22 @@ func TestStoreSaveToFileCreatesPrivateArtifacts(t *testing.T) {
 	}
 }
 
+func TestStorePendingTotalDecrementDoesNotUnderflow(t *testing.T) {
+	s := New(100, time.Hour, time.Minute)
+
+	s.decrementPendingTotal()
+	if got := s.pendingTotal.Load(); got != 0 {
+		t.Fatalf("pending total underflowed: got=%d want=0", got)
+	}
+
+	s.pendingTotal.Store(1)
+	s.decrementPendingTotal()
+	s.decrementPendingTotal()
+	if got := s.pendingTotal.Load(); got != 0 {
+		t.Fatalf("pending total should stay at zero, got=%d", got)
+	}
+}
+
 func TestStore_Sharding(t *testing.T) {
 	now := time.Now()
 

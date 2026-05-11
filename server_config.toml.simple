@@ -192,6 +192,8 @@ FORWARD_PORT = 0
 DATA_ENCRYPTION_METHOD = 5
 
 # Relative or absolute path to the encryption key file.
+# New AES-256-GCM keys are generated as 64 hex characters.
+# Existing legacy 32-character AES-256 keys still load, but should be rotated.
 ENCRYPTION_KEY_FILE = "encrypt_key.txt"
 
 # ------------------------------------------------------------------------------

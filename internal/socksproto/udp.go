@@ -113,24 +113,5 @@ func BuildTargetPayload(target Target) []byte {
 }
 
 func parseTargetWithOffset(payload []byte) (Target, int, error) {
-	target, err := ParseTargetPayload(payload)
-	if err != nil {
-		return Target{}, 0, err
-	}
-
-	offset := 1
-	switch target.AddressType {
-	case AddressTypeIPv4:
-		offset += 4 + 2
-	case AddressTypeIPv6:
-		offset += 16 + 2
-	case AddressTypeDomain:
-		if len(payload) < 2 {
-			return Target{}, 0, ErrTargetTooShort
-		}
-		offset += 1 + int(payload[1]) + 2
-	default:
-		return Target{}, 0, ErrUnsupportedAddressType
-	}
-	return target, offset, nil
+	return parseTargetPayloadWithOffset(payload)
 }

@@ -18,33 +18,36 @@ import (
 )
 
 type EncryptionKeyInfo struct {
-	MethodID   int
-	MethodName string
-	Key        string
-	Path       string
-	Loaded     bool
-	Generated  bool
+	MethodID          int
+	MethodName        string
+	Key               string
+	Path              string
+	Loaded            bool
+	Generated         bool
+	LegacyLength      bool
+	RecommendedLength int
 }
 
 func EnsureServerEncryptionKey(cfg config.ServerConfig) (EncryptionKeyInfo, error) {
 	info := EncryptionKeyInfo{
-		MethodID:   cfg.DataEncryptionMethod,
-		MethodName: EncryptionMethodName(cfg.DataEncryptionMethod),
-		Path:       cfg.EncryptionKeyPath(),
+		MethodID:          cfg.DataEncryptionMethod,
+		MethodName:        EncryptionMethodName(cfg.DataEncryptionMethod),
+		Path:              cfg.EncryptionKeyPath(),
+		RecommendedLength: recommendedKeyTextLength(cfg.DataEncryptionMethod),
 	}
 
-	requiredLength := requiredKeyLength(cfg.DataEncryptionMethod)
 	raw, err := os.ReadFile(info.Path)
 	if err == nil {
 		key := strings.TrimSpace(string(raw))
-		if len(key) == requiredLength {
+		if isAcceptableExistingKeyLength(cfg.DataEncryptionMethod, len(key)) {
 			info.Key = key
 			info.Loaded = true
+			info.LegacyLength = len(key) < info.RecommendedLength
 			return info, nil
 		}
 	}
 
-	key, err := generateHexText(requiredLength)
+	key, err := generateHexText(info.RecommendedLength)
 	if err != nil {
 		return info, fmt.Errorf("generate encryption key: %w", err)
 	}
@@ -76,7 +79,7 @@ func EncryptionMethodName(methodID int) string {
 	}
 }
 
-func requiredKeyLength(methodID int) int {
+func legacyKeyTextLength(methodID int) int {
 	switch methodID {
 	case 3:
 		return 16
@@ -85,6 +88,25 @@ func requiredKeyLength(methodID int) int {
 	default:
 		return 32
 	}
+}
+
+func recommendedKeyTextLength(methodID int) int {
+	switch methodID {
+	case 3:
+		return 32 // 16 random bytes, hex encoded.
+	case 4:
+		return 48 // 24 random bytes, hex encoded.
+	default:
+		return 64 // 32 random bytes, hex encoded.
+	}
+}
+
+func isAcceptableExistingKeyLength(methodID int, length int) bool {
+	recommended := recommendedKeyTextLength(methodID)
+	if length >= recommended {
+		return true
+	}
+	return length == legacyKeyTextLength(methodID)
 }
 
 func generateHexText(length int) (string, error) {

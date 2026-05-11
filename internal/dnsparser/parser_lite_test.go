@@ -7,6 +7,8 @@
 package dnsparser
 
 import (
+	"encoding/binary"
+	"errors"
 	"testing"
 
 	Enums "masterdnsvpn-go/internal/enums"
@@ -41,6 +43,24 @@ func TestParsePacketLiteParsesAllQuestions(t *testing.T) {
 	}
 	if parsed.QuestionEndOffset <= dnsHeaderSize {
 		t.Fatalf("unexpected QuestionEndOffset: got=%d want>%d", parsed.QuestionEndOffset, dnsHeaderSize)
+	}
+}
+
+func TestParsePacketLiteRejectsExcessiveQuestionCount(t *testing.T) {
+	packet := make([]byte, dnsHeaderSize)
+	binary.BigEndian.PutUint16(packet[4:6], maxLikelyQuestions+1)
+
+	if _, err := ParsePacketLite(packet); !errors.Is(err, ErrCountTooLarge) {
+		t.Fatalf("expected ErrCountTooLarge, got %v", err)
+	}
+}
+
+func TestParsePacketRejectsExcessiveAnswerCountBeforeAllocation(t *testing.T) {
+	packet := make([]byte, dnsHeaderSize)
+	binary.BigEndian.PutUint16(packet[6:8], maxLikelyAnswers+1)
+
+	if _, err := ParsePacket(packet); !errors.Is(err, ErrCountTooLarge) {
+		t.Fatalf("expected ErrCountTooLarge, got %v", err)
 	}
 }
 

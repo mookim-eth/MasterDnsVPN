@@ -147,7 +147,14 @@ func isLikelyDNSRequestHeader(header Header) bool {
 	if header.QR != 0 {
 		return false
 	}
-	if header.QDCount == 0 || header.QDCount > maxLikelyQuestions {
+	if header.QDCount == 0 {
+		return false
+	}
+	return isLikelyDNSPacketHeader(header)
+}
+
+func isLikelyDNSPacketHeader(header Header) bool {
+	if header.QDCount > maxLikelyQuestions {
 		return false
 	}
 	if header.OpCode > 6 {

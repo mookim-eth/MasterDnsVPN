@@ -34,15 +34,25 @@ Key risks found in the original implementation:
   `2=ChaCha20`).
 - AES-128/192/256 key derivation now uses SHA-256 material instead of MD5 for
   AES-128.
+- New server-side AES-GCM key generation now emits full-size hex keys
+  (64 characters for AES-256-GCM); legacy shorter generated keys still load with
+  a warning to avoid silently breaking existing clients.
 - Server startup logs redact the active encryption key.
 - Direct TCP/SOCKS dials install a `net.Dialer.ControlContext` guard to reject
   resolved private/local/link-local/multicast targets before connect.
+- Fragment reassembly now enforces configured capacities for incomplete and
+  recently completed fragment entries.
+- DNS parsers now reject excessive section counts before allocating large slices,
+  TXT RDATA parsing rejects malformed character-string lengths, and SOCKS target
+  payloads reject trailing bytes.
 
 ## Remaining concerns
 
 - DNS TXT tunnelling remains highly fingerprintable in principle: high-entropy
   TXT data, unusual answer sizes/chunking, low TTLs and EDNS behavior can stand
   out compared with ordinary DNS.
+- Existing deployments that still use legacy short generated keys should rotate
+  server and client keys during a coordinated maintenance window.
 - `govulncheck` currently reports `GO-2026-4971` in the Go standard library used
   by the local toolchain (`go1.25.0`); build with Go `1.25.10` or newer when that
   toolchain is available.

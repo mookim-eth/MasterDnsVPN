@@ -187,6 +187,12 @@ func main() {
 			"\U0001F5C2 <green>Encryption Key Loaded, Path: <cyan>%s</cyan></green>",
 			keyInfo.Path,
 		)
+		if keyInfo.LegacyLength {
+			log.Warnf(
+				"\u26A0\uFE0F <yellow>Encryption key uses a legacy short length; plan a coordinated rotation by backing up/removing the old key, regenerating a new %d-character key, then updating clients.</yellow>",
+				keyInfo.RecommendedLength,
+			)
+		}
 	}
 
 	log.Infof("\U0001F511 <green>Active Encryption Key: <yellow>loaded (redacted)</yellow></green>")

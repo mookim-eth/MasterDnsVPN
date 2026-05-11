@@ -41,6 +41,27 @@ changes testable and committing each iteration.
 - [x] Added tests for private file modes and duplicate chunk rejection.
 - [x] Verified with `go test ./...`, `go vet ./...`, and `git diff --check`.
 
+## Completed in deep-dive iteration
+
+- [x] Fixed server-side AES-GCM key generation entropy: new AES-256-GCM keys are
+      64 hex characters (32 random bytes), while legacy 32-character generated
+      keys still load with a rotation warning.
+- [x] Bounded fragment reassembly stores so configured capacities actually cap
+      incomplete and completed fragment bookkeeping instead of only sizing maps.
+- [x] Hardened DNS parsing against oversized section counts before allocating
+      large question/record slices.
+- [x] Made TXT RDATA extraction reject malformed character-string lengths instead
+      of truncating malformed answers.
+- [x] Made SOCKS target parsing reject trailing bytes in CONNECT target payloads.
+- [x] Guarded payload fragmentation against non-positive MTU values.
+- [x] Fixed DNS cache pending-counter underflow under concurrent removals.
+- [x] Added regression tests for all of the above and re-ran `go test ./...` and
+      `go vet ./...`.
+- [x] Re-ran `/root/go/bin/staticcheck ./...`, `/root/go/bin/gosec ./...`, and
+      `/root/go/bin/govulncheck ./...`; staticcheck/gosec still report
+      pre-existing cleanup findings, and govulncheck is still blocked only by
+      local Go stdlib `GO-2026-4971` fixed in Go `1.25.10`.
+
 ## Next iteration queue
 
 ### P0/P1 security hardening
@@ -68,4 +89,5 @@ changes testable and committing each iteration.
 1. Add a compatibility-safe DNS response TTL profile and tests.
 2. Continue reducing `gosec` G115 false positives in protocol packing helpers.
 3. Evaluate whether a Go toolchain bump to `1.25.10+` is feasible in CI/runtime.
-4. Commit and push the iteration.
+4. Keep shrinking DoS surfaces in local listeners and persistence parsers.
+5. Commit and push the iteration.

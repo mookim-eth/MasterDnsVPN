@@ -35,6 +35,13 @@ func TestParseTargetPayloadRejectsUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestParseTargetPayloadRejectsTrailingData(t *testing.T) {
+	payload := []byte{0x01, 127, 0, 0, 1, 0x01, 0xBB, 0xAA}
+	if _, err := ParseTargetPayload(payload); err != ErrTargetTrailingData {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestParseAndBuildUDPDatagram(t *testing.T) {
 	packet := BuildUDPDatagram(Target{
 		AddressType: AddressTypeDomain,

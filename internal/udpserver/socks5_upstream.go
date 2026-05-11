@@ -414,6 +414,9 @@ func writeAll(conn net.Conn, payload []byte) error {
 		if err != nil {
 			return err
 		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
 		payload = payload[n:]
 	}
 	return nil

@@ -234,9 +234,7 @@ func (s *Store) SetReady(key string, domain string, qType uint16, qClass uint16,
 	if element, ok := shard.items[key]; ok {
 		node := element.Value.(*cacheNode)
 		if node.entry.Status == StatusPending {
-			if count := s.pendingTotal.Load(); count > 0 {
-				s.pendingTotal.Add(^uint64(0)) // Decrement
-			}
+			s.decrementPendingTotal()
 		}
 		node.entry.Domain = domain
 		node.entry.QuestionType = qType
@@ -347,13 +345,26 @@ func (s *Store) removeElementLocked(shard *shard, element *list.Element) {
 	}
 	node := element.Value.(*cacheNode)
 	if node.entry.Status == StatusPending {
-		if count := s.pendingTotal.Load(); count > 0 {
-			s.pendingTotal.Add(^uint64(0)) // Decrement
-		}
+		s.decrementPendingTotal()
 	}
 	delete(shard.items, node.key)
 	shard.order.Remove(element)
 	s.dirty.Add(1)
+}
+
+func (s *Store) decrementPendingTotal() {
+	if s == nil {
+		return
+	}
+	for {
+		current := s.pendingTotal.Load()
+		if current == 0 {
+			return
+		}
+		if s.pendingTotal.CompareAndSwap(current, current-1) {
+			return
+		}
+	}
 }
 
 const (
