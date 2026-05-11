@@ -168,7 +168,7 @@ If you want to deploy the server on Linux, the easiest method is the automatic i
 bash <(curl -Ls https://raw.githubusercontent.com/masterking32/MasterDnsVPN/main/server_linux_install.sh)
 ```
 
-The script handles installation and configuration automatically. When it finishes, the server starts and the **encryption key** is shown in the terminal log and also written to `encrypt_key.txt` next to the executable. Keep this key safe.
+The script handles installation and configuration automatically. When it finishes, the installer prints the **encryption key** once and also writes it to `encrypt_key.txt` next to the executable. Keep this key safe. Runtime server logs redact the active key.
 
 #### Step 1.2.2: Important Notes After Installation
 
@@ -190,7 +190,136 @@ sudo firewall-cmd --reload
 ```
 
 - If port `53` is already occupied by another service, such as `systemd-resolved`, see the troubleshooting section “Fixing Port 53 Already in Use”.
-- The encryption key (`encrypt_key.txt`) is shown after installation. Copy it and store it safely because the client needs it to connect.
+- The encryption key (`encrypt_key.txt`) is printed by the installer and stored on disk. Copy it to the client config and protect the file; normal service logs no longer print the raw key.
+
+---
+
+### Section 1.3: 🔐 Hardened Deployment Workflow (Recommended for This Branch)
+
+This hardening branch changes the security assumptions compared with older releases. Use this checklist when deploying the hardened fork or any release that includes these commits.
+
+> ⚠️ **Important:** the automatic Linux installer downloads binaries from the upstream GitHub release channel. If that release does not yet include this hardening branch, build from source as shown below instead of using old release binaries.
+
+#### Step 1.3.1: DNS delegation
+
+1. Create an `A` record for the authoritative nameserver host, for example:
+
+```text
+ns.example.com -> YOUR_SERVER_IP
+```
+
+2. Create an `NS` record that delegates the tunnel subdomain to that host:
+
+```text
+v.example.com -> ns.example.com
+```
+
+3. If your DNS provider has a proxy/CDN mode, keep these records in **DNS only** mode.
+4. Verify delegation before starting client testing:
+
+```bash
+dig ns.example.com A
+dig v.example.com NS
+```
+
+After the server is running, the real end-to-end test is starting the client and checking that the session initializes successfully.
+
+#### Step 1.3.2: Build hardened binaries from this branch
+
+Use Go `1.25.10` or newer when available. The local `go1.25.0` toolchain is known to trigger `govulncheck` warning `GO-2026-4971` in the Go standard library.
+
+```bash
+git clone -b hardening/strong-adversary-vpn https://github.com/mookim-eth/MasterDnsVPN.git
+cd MasterDnsVPN
+
+go build -o masterdnsvpn-server ./cmd/server
+go build -o masterdnsvpn-client ./cmd/client
+```
+
+#### Step 1.3.3: Configure and initialize the server
+
+```bash
+cp server_config.toml.simple server_config.toml
+nano server_config.toml
+```
+
+Minimum server values to check:
+
+```toml
+DOMAIN = ["v.example.com"]
+DATA_ENCRYPTION_METHOD = 5
+ENCRYPTION_KEY_FILE = "encrypt_key.txt"
+UDP_HOST = "0.0.0.0"
+UDP_PORT = 53
+```
+
+Generate or verify the server key:
+
+```bash
+./masterdnsvpn-server -config server_config.toml -genkey -nowait
+chmod 600 encrypt_key.txt
+cat encrypt_key.txt
+```
+
+Copy the printed key into the client `ENCRYPTION_KEY`. The server no longer logs the raw active key during normal startup.
+
+Run the server:
+
+```bash
+# Optional: lets a non-root process bind UDP/53. On Debian/Ubuntu, install with:
+# sudo apt install libcap2-bin
+sudo setcap 'cap_net_bind_service=+ep' ./masterdnsvpn-server
+
+./masterdnsvpn-server -config server_config.toml -log server.log
+```
+
+If you use a firewall, allow UDP port `53`.
+
+#### Step 1.3.4: Configure and run the client
+
+```bash
+cp client_config.toml.simple client_config.toml
+cp client_resolvers.simple client_resolvers.txt
+nano client_config.toml
+```
+
+Minimum client values to check:
+
+```toml
+DOMAINS = ["v.example.com"]
+DATA_ENCRYPTION_METHOD = 5
+ENCRYPTION_KEY = "paste-the-server-encrypt-key-here"
+LISTEN_IP = "127.0.0.1"
+LISTEN_PORT = 18000
+```
+
+Resolver file example:
+
+```text
+1.1.1.1
+8.8.8.8
+9.9.9.9
+```
+
+Run the client:
+
+```bash
+./masterdnsvpn-client -config client_config.toml -log client.log
+```
+
+Point your browser/app at the local SOCKS5 proxy, usually `127.0.0.1:18000`. If you bind `LISTEN_IP` to `0.0.0.0`, enable `SOCKS5_AUTH` and use a firewall; otherwise other machines on the network can use your tunnel.
+
+#### Step 1.3.5: Upgrade notes for older installs
+
+- Stop the service before replacing binaries.
+- Back up `server_config.toml`, `client_config.toml`, `client_resolvers.txt`, and `encrypt_key.txt`.
+- Old configs using `DATA_ENCRYPTION_METHOD = 0`, `1`, or `2` will now fail to start. Change both client and server to `5`.
+- If you changed the encryption method, regenerate or replace the key and update the client key.
+- Restart the server first, then the client.
+
+#### Step 1.3.6: Security expectations
+
+The hardened branch encrypts tunnel responses in both directions, rejects unauthenticated legacy crypto modes, redacts service logs, and uses private file permissions for generated local artifacts. It still uses DNS TXT tunnelling, so traffic shape can remain fingerprintable under a strong network adversary. See `SECURITY_HARDENING.md` for the current audit notes and remaining risks.
 
 ---
 
@@ -207,7 +336,7 @@ You can install and run this project in two ways:
 
 For convenience, prebuilt client and server binaries are published in the release page. Download the correct archive for your operating system and extract it.
 
-> 💡 **Note:** Release archives usually include the binary plus sample configuration files.
+> 💡 **Note:** Release archives usually include the binary plus sample configuration files. For the hardened fork, make sure the binary you download includes the hardening commits listed in `SECURITY_HARDENING.md`; otherwise build from source using Section 1.3.
 
 #### Client Download Links 📥
 
@@ -435,7 +564,7 @@ Then run:
 
 #### Prerequisite
 
-- Go `1.24` or newer
+- Go `1.25.10` or newer is recommended for hardened deployments (`go1.25.0` is flagged by `govulncheck` for `GO-2026-4971`)
 
 #### Build from source
 
