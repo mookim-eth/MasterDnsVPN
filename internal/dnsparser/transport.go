@@ -879,7 +879,7 @@ func assembleVPNResponse(rawAnswers [][]byte, baseEncoded bool) (VpnProto.Packet
 		return VpnProto.ParseInflated(raw)
 	}
 
-	var chunks [256][]byte
+	chunks := make(map[byte][]byte, 256)
 	totalExpected := 0
 	seenChunks := 0
 	var header VpnProto.Packet
@@ -901,8 +901,11 @@ func assembleVPNResponse(rawAnswers [][]byte, baseEncoded bool) (VpnProto.Packet
 			if len(raw) < 3 {
 				return VpnProto.Packet{}, ErrTXTAnswerMalformed
 			}
+			if headerSeen {
+				return VpnProto.Packet{}, ErrTXTAnswerMalformed
+			}
 			totalExpected = int(raw[1])
-			if totalExpected <= 0 || totalExpected > len(chunks) {
+			if totalExpected <= 0 || totalExpected > 255 {
 				return VpnProto.Packet{}, ErrTXTAnswerMalformed
 			}
 			parsed, err := VpnProto.ParseAtOffset(raw, 2)
@@ -911,45 +914,48 @@ func assembleVPNResponse(rawAnswers [][]byte, baseEncoded bool) (VpnProto.Packet
 			}
 			header = parsed
 			headerSeen = true
-			if chunks[0] == nil {
-				seenChunks++
+			if chunks[0] != nil {
+				return VpnProto.Packet{}, ErrTXTAnswerMalformed
 			}
+			seenChunks++
 			chunks[0] = parsed.Payload
 			continue
 		}
 
 		chunkID := int(raw[0])
-		if chunkID >= len(chunks) {
+		if chunkID <= 0 || chunkID > 255 {
 			return VpnProto.Packet{}, ErrTXTAnswerMalformed
 		}
-		if chunks[chunkID] == nil {
-			seenChunks++
+		chunkKey := byte(chunkID)
+		if chunks[chunkKey] != nil {
+			return VpnProto.Packet{}, ErrTXTAnswerMalformed
 		}
-		chunks[chunkID] = raw[1:]
+		seenChunks++
+		chunks[chunkKey] = raw[1:]
 	}
 
 	if !headerSeen || totalExpected <= 0 || seenChunks != totalExpected {
 		return VpnProto.Packet{}, ErrTXTAnswerMalformed
 	}
 	for i := range totalExpected {
-		if chunks[i] == nil {
+		if chunks[byte(i)] == nil {
 			return VpnProto.Packet{}, ErrTXTAnswerMalformed
 		}
 	}
-	for i := totalExpected; i < len(chunks); i++ {
-		if chunks[i] != nil {
+	for i := totalExpected; i <= 255; i++ {
+		if chunks[byte(i)] != nil {
 			return VpnProto.Packet{}, ErrTXTAnswerMalformed
 		}
 	}
 
 	payloadLen := 0
 	for i := range totalExpected {
-		payloadLen += len(chunks[i])
+		payloadLen += len(chunks[byte(i)])
 	}
 
 	payload := make([]byte, 0, payloadLen)
 	for i := range totalExpected {
-		payload = append(payload, chunks[i]...)
+		payload = append(payload, chunks[byte(i)]...)
 	}
 	header.Payload = payload
 	return VpnProto.InflatePayload(header)

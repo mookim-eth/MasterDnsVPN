@@ -228,11 +228,11 @@ func (c *Client) prepareMTUSuccessOutputFile() string {
 }
 
 func (c *Client) initializeMTUSuccessOutputFile(outputPath string) error {
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o700); err != nil {
 		return err
 	}
 
-	return os.WriteFile(outputPath, []byte{}, 0o644)
+	return os.WriteFile(outputPath, []byte{}, 0o600)
 }
 
 func (c *Client) warnMTUOutputError(outputPath string, err error) {
@@ -323,7 +323,7 @@ func (c *Client) appendMTULogLine(template string, conn *Connection, cause strin
 	c.mtuOutputMu.Lock()
 	defer c.mtuOutputMu.Unlock()
 
-	file, err := os.OpenFile(outputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(outputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		c.warnMTUAppendError(err)
 		return

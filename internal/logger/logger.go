@@ -80,7 +80,7 @@ func NewWithFile(name, rawLevel, filePath string) *Logger {
 	var fileWriter *os.File
 
 	if filePath != "" {
-		f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err == nil {
 			fileWriter = f
 		}

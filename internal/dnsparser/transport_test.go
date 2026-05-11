@@ -275,6 +275,55 @@ func TestExtractEncryptedVPNResponseRejectsWrongCodec(t *testing.T) {
 	}
 }
 
+func TestAssembleOpaqueTXTAnswerPayloadRejectsDuplicateChunks(t *testing.T) {
+	rawAnswers := [][]byte{
+		{0x00, 0x02, 'a'},
+		{0x01, 'b'},
+		{0x01, 'c'},
+	}
+
+	if _, err := assembleOpaqueTXTAnswerPayload(rawAnswers, false); !errors.Is(err, ErrTXTAnswerMalformed) {
+		t.Fatalf("expected malformed duplicate chunk error, got %v", err)
+	}
+}
+
+func TestExtractVPNResponseRejectsDuplicateChunkedAnswers(t *testing.T) {
+	query, err := BuildTXTQuestionPacket("x.v.example.com", Enums.DNS_RECORD_TYPE_TXT, 4096)
+	if err != nil {
+		t.Fatalf("BuildTXTQuestionPacket returned error: %v", err)
+	}
+
+	rawFrame, err := VpnProto.BuildRaw(VpnProto.BuildOptions{
+		SessionID:   7,
+		PacketType:  Enums.PACKET_MTU_DOWN_RES,
+		StreamID:    1,
+		SequenceNum: 2,
+		Payload:     bytes.Repeat([]byte{0xCD}, 700),
+	})
+	if err != nil {
+		t.Fatalf("BuildRaw returned error: %v", err)
+	}
+
+	chunks, err := buildTXTAnswerChunks(rawFrame, false)
+	if err != nil {
+		t.Fatalf("buildTXTAnswerChunks returned error: %v", err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("expected chunked answers, got=%d", len(chunks))
+	}
+
+	duplicated := append([][]byte(nil), chunks...)
+	duplicated = append(duplicated, chunks[1])
+	response, err := BuildTXTResponsePacket(query, "x.v.example.com", duplicated)
+	if err != nil {
+		t.Fatalf("BuildTXTResponsePacket returned error: %v", err)
+	}
+
+	if _, err := ExtractVPNResponse(response, false); !errors.Is(err, ErrTXTAnswerMalformed) {
+		t.Fatalf("expected duplicate chunk to be malformed, got %v", err)
+	}
+}
+
 func TestPlainExtractDoesNotDecodeEncryptedVPNResponse(t *testing.T) {
 	codec := newTransportTestCodec(t, "0123456789abcdef0123456789abcdef")
 	query, err := BuildTXTQuestionPacket("x.v.example.com", Enums.DNS_RECORD_TYPE_TXT, 4096)

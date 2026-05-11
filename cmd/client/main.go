@@ -225,18 +225,28 @@ func main() {
 			waitForExitInput()
 			os.Exit(1)
 		}
-		app, err = client.BootstrapLoadedConfig(cfg, opts.logPath)
 		resolvedConfigPath = cfg.ConfigPath
+		app, err = client.BootstrapLoadedConfig(cfg, opts.logPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Client startup failed: %v\n", err)
+			waitForExitInput()
+			os.Exit(1)
+		}
 	case opts.jsonPath != "":
-		app, err = client.Bootstrap(runtimepath.Resolve(opts.jsonPath), opts.logPath, overrides)
 		resolvedConfigPath = runtimepath.Resolve(opts.jsonPath)
+		app, err = client.Bootstrap(resolvedConfigPath, opts.logPath, overrides)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Client startup failed: %v\n", err)
+			waitForExitInput()
+			os.Exit(1)
+		}
 	default:
 		app, err = client.Bootstrap(resolvedConfigPath, opts.logPath, overrides)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Client startup failed: %v\n", err)
-		waitForExitInput()
-		os.Exit(1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Client startup failed: %v\n", err)
+			waitForExitInput()
+			os.Exit(1)
+		}
 	}
 
 	app.PrintBanner()

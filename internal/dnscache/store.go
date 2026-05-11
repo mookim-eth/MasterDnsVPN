@@ -448,7 +448,11 @@ func (s *Store) SaveToFile(path string, now time.Time) (int, error) {
 	}
 
 	tempPath := path + ".tmp"
-	file, err := os.Create(tempPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return 0, err
+	}
+
+	file, err := os.OpenFile(tempPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, err
 	}
@@ -506,10 +510,6 @@ func (s *Store) SaveToFile(path string, now time.Time) (int, error) {
 	}
 
 	if err = file.Close(); err != nil {
-		return saved, err
-	}
-
-	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return saved, err
 	}
 

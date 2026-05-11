@@ -63,8 +63,37 @@ func TestStore_BinaryPersistence(t *testing.T) {
 	}
 }
 
+func TestStoreSaveToFileCreatesPrivateArtifacts(t *testing.T) {
+	tempDir := t.TempDir()
+	cacheDir := filepath.Join(tempDir, "nested")
+	cachePath := filepath.Join(cacheDir, "cache.bin")
+
+	s := New(100, time.Hour, time.Minute)
+	now := time.Now()
+	s.SetReady(BuildKey("example.com", 1, 1), "example.com", 1, 1, []byte("\x00\x00answer"), now)
+
+	if _, err := s.SaveToFile(cachePath, now); err != nil {
+		t.Fatalf("SaveToFile failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(cacheDir)
+	if err != nil {
+		t.Fatalf("Stat cache dir failed: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("unexpected cache dir mode: got=%#o want=%#o", got, os.FileMode(0o700))
+	}
+
+	fileInfo, err := os.Stat(cachePath)
+	if err != nil {
+		t.Fatalf("Stat cache file failed: %v", err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("unexpected cache file mode: got=%#o want=%#o", got, os.FileMode(0o600))
+	}
+}
+
 func TestStore_Sharding(t *testing.T) {
-	s := New(10, time.Hour, time.Minute)
 	now := time.Now()
 
 	// Fill shard-limited capacity
@@ -73,7 +102,7 @@ func TestStore_Sharding(t *testing.T) {
 	// If maxRecords is 10, limit is 0 (set to 1).
 
 	// Let's use more records
-	s = New(100, time.Hour, time.Minute) // 100/32 = 3 per shard
+	s := New(100, time.Hour, time.Minute) // 100/32 = 3 per shard
 
 	for i := 0; i < 200; i++ {
 		domain := "domain" + string(rune(i))

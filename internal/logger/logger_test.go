@@ -78,6 +78,25 @@ func TestLoggerSuppressesBelowLevel(t *testing.T) {
 	}
 }
 
+func TestNewWithFileCreatesPrivateLogFile(t *testing.T) {
+	path := t.TempDir() + "/app.log"
+
+	l := NewWithFile("test", "info", path)
+	if l.fileWriter != nil {
+		defer l.fileWriter.Close()
+	}
+
+	l.Infof("hello")
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("unexpected log file mode: got=%#o want=%#o", got, os.FileMode(0o600))
+	}
+}
+
 func TestShouldUseColorHonorsNoColor(t *testing.T) {
 	oldNoColor := os.Getenv("NO_COLOR")
 	oldForceColor := os.Getenv("FORCE_COLOR")

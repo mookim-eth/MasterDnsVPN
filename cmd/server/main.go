@@ -144,6 +144,7 @@ func main() {
 	defer stop()
 
 	log.Infof("\U0001F680 <green>Server Configuration Loaded</green>")
+	log.Infof("\U0001F4C4 <green>Configuration loaded from: <cyan>%s</cyan></green>", resolvedConfigPath)
 	if len(cfg.Domain) > 0 {
 		log.Infof(
 			"\U0001F310 <green>Allowed Domains: <cyan>%s</cyan>, Min Label:<cyan>%d</cyan></green>",
